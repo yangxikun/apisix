@@ -91,7 +91,11 @@ function _M.test_ipv6(uri)
     while true do
         local line, err, part = sock:receive()
         if line then
-            ngx.say("received: ", line)
+            if line ~= "" then
+                ngx.say("received: ", line)
+            else
+                ngx.say("received:")
+            end
 
         else
             ngx.say("failed to receive a line: ", err, " [", part, "]")
@@ -131,18 +135,27 @@ function _M.comp_tab(left_tab, right_tab)
 end
 
 
-function _M.set_config_yaml(data)
-    local fn
+local function set_yaml(fn, data)
     local profile = os.getenv("APISIX_PROFILE")
     if profile then
-        fn = "config-" .. profile .. ".yaml"
+        fn = fn .. "-" .. profile .. ".yaml"
     else
-        fn = "config.yaml"
+        fn = fn .. ".yaml"
     end
 
     local f = assert(io.open(os.getenv("TEST_NGINX_HTML_DIR") .. "/../conf/" .. fn, 'w'))
     assert(f:write(data))
     f:close()
+end
+
+
+function _M.set_config_yaml(data)
+    set_yaml("config", data)
+end
+
+
+function _M.set_apisix_yaml(data)
+    set_yaml("apisix", data)
 end
 
 

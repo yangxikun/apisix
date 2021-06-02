@@ -67,6 +67,7 @@ __DATA__
 passed
 
 
+
 === TEST 2: route by name
 --- request
 POST /hello
@@ -171,7 +172,7 @@ failed to parse graphql: Syntax error near line 1 body: AA
 
 
 
-=== TEST 8: set anonymous operaion name
+=== TEST 8: set anonymous operation name
 --- config
     location /t {
         content_by_lua_block {

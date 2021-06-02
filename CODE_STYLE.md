@@ -1,3 +1,7 @@
+---
+title: APISIX Lua Coding Style Guide
+---
+
 <!--
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
@@ -17,11 +21,7 @@
 #
 -->
 
-[Chinese](CODE_STYLE_CN.md)
-
-# APISIX Lua Coding Style Guide
-
-## indentation
+## Indentation
 
 Use 4 spaces as an indent:
 

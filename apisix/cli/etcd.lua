@@ -17,16 +17,20 @@
 
 local base64_encode = require("base64").encode
 local dkjson = require("dkjson")
+local constants = require("apisix.constants")
 local util = require("apisix.cli.util")
 local file = require("apisix.cli.file")
 local http = require("socket.http")
+local https = require("ssl.https")
 local ltn12 = require("ltn12")
 
 local type = type
 local ipairs = ipairs
+local pairs = pairs
 local print = print
 local tonumber = tonumber
 local str_format = string.format
+local str_sub = string.sub
 local table_concat = table.concat
 
 local _M = {}
@@ -90,7 +94,57 @@ local function compare_semantic_version(v1, v2)
 end
 
 
-function _M.init(env, show_output)
+local function request(url, yaml_conf)
+    local response_body = {}
+    local single_request = false
+    if type(url) == "string" then
+        url = {
+            url = url,
+            method = "GET",
+            sink = ltn12.sink.table(response_body),
+        }
+        single_request = true
+    end
+
+    local res, code
+
+    if str_sub(url.url, 1, 8) == "https://" then
+        local verify = "peer"
+        if yaml_conf.etcd.tls then
+            local cfg = yaml_conf.etcd.tls
+
+            if cfg.verify == false then
+                verify = "none"
+            end
+
+            url.certificate = cfg.cert
+            url.key = cfg.key
+
+            local apisix_ssl = yaml_conf.apisix.ssl
+            if apisix_ssl and apisix_ssl.ssl_trusted_certificate then
+                url.cafile = apisix_ssl.ssl_trusted_certificate
+            end
+        end
+
+        url.verify = verify
+        res, code = https.request(url)
+    else
+
+        res, code = http.request(url)
+    end
+
+    -- In case of failure, request returns nil followed by an error message.
+    -- Else the first return value is the response body
+    -- and followed by the response status code.
+    if single_request and res ~= nil then
+        return table_concat(response_body), code
+    end
+
+    return res, code
+end
+
+
+function _M.init(env, args)
     -- read_yaml_conf
     local yaml_conf, err = file.read_yaml_conf(env.apisix_home)
     if not yaml_conf then
@@ -137,7 +191,7 @@ function _M.init(env, show_output)
         local version_url = host .. "/version"
         local errmsg
 
-        local res, err = http.request(version_url)
+        local res, err = request(version_url, yaml_conf)
         -- In case of failure, request returns nil followed by an error message.
         -- Else the first return value is the response body
         -- and followed by the response status code.
@@ -179,10 +233,15 @@ function _M.init(env, show_output)
 
             local post_json_auth = dkjson.encode(json_auth)
             local response_body = {}
-            local res, err = http.request{url = auth_url, method = "POST",
-                                        source = ltn12.source.string(post_json_auth),
-                                        sink = ltn12.sink.table(response_body),
-                                        headers = {["Content-Length"] = #post_json_auth}}
+            local res, err = request({
+                url = auth_url,
+                method = "POST",
+                source = ltn12.source.string(post_json_auth),
+                sink = ltn12.sink.table(response_body),
+                headers = {
+                    ["Content-Length"] = #post_json_auth
+                }
+            }, yaml_conf)
             -- In case of failure, request returns nil followed by an error message.
             -- Else the first return value is just the number 1
             -- and followed by the response status code.
@@ -203,11 +262,15 @@ function _M.init(env, show_output)
         end
 
 
-        for _, dir_name in ipairs({"/routes", "/upstreams", "/services",
-                                   "/plugins", "/consumers", "/node_status",
-                                   "/ssl", "/global_rules", "/stream_routes",
-                                   "/proto", "/plugin_metadata"}) do
+        local dirs = {}
+        for name in pairs(constants.HTTP_ETCD_DIRECTORY) do
+            dirs[name] = true
+        end
+        for name in pairs(constants.STREAM_ETCD_DIRECTORY) do
+            dirs[name] = true
+        end
 
+        for dir_name in pairs(dirs) do
             local key =  (etcd_conf.prefix or "") .. dir_name .. "/"
 
             local put_url = host .. "/v3/kv/put"
@@ -219,10 +282,13 @@ function _M.init(env, show_output)
                 headers["Authorization"] = auth_token
             end
 
-            local res, err = http.request{url = put_url, method = "POST",
-                                        source = ltn12.source.string(post_json),
-                                        sink = ltn12.sink.table(response_body),
-                                        headers = headers}
+            local res, err = request({
+                url = put_url,
+                method = "POST",
+                source = ltn12.source.string(post_json),
+                sink = ltn12.sink.table(response_body),
+                headers = headers
+            }, yaml_conf)
             if not res then
                 errmsg = str_format("request etcd endpoint \"%s\" error, %s\n", put_url, err)
                 util.die(errmsg)
@@ -246,7 +312,7 @@ function _M.init(env, show_output)
                 break
             end
 
-            if show_output then
+            if args and args["verbose"] then
                 print(res_put)
             end
         end

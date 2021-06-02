@@ -34,8 +34,8 @@ local lrucache = core.lrucache.new({
 local schema = {
     type = "object",
     properties = {
-        count = {type = "integer", minimum = 0},
-        time_window = {type = "integer",  minimum = 0},
+        count = {type = "integer", exclusiveMinimum = 0},
+        time_window = {type = "integer",  exclusiveMinimum = 0},
         key = {
             type = "string",
             enum = {"remote_addr", "server_addr", "http_x_real_ip",
@@ -43,8 +43,7 @@ local schema = {
             default = "remote_addr",
         },
         rejected_code = {
-            type = "integer", minimum = 200, maximum = 600,
-            default = 503
+            type = "integer", minimum = 200, maximum = 599, default = 503
         },
         policy = {
             type = "string",
@@ -77,6 +76,9 @@ local schema = {
                         redis_password = {
                             type = "string", minLength = 0,
                         },
+                        redis_database = {
+                            type = "integer", minimum = 0, default = 0,
+                        },
                         redis_timeout = {
                             type = "integer", minimum = 1, default = 1000,
                         },
@@ -101,8 +103,11 @@ local schema = {
                         redis_timeout = {
                             type = "integer", minimum = 1, default = 1000,
                         },
+                        redis_cluster_name = {
+                            type = "string",
+                        },
                     },
-                    required = {"redis_cluster_nodes"},
+                    required = {"redis_cluster_nodes", "redis_cluster_name"},
                 }
             }
         }
